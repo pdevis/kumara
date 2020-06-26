@@ -23,9 +23,6 @@ __status__ = "Development"
 
 
 libradtranpath = "/opt/libRadtran-2.0.2/"
-INPUTDIR = '/home/pdv/libradtran/examples'
-OUTPUTDIR = '/home/pdv/libradtran/examples'
-PLOTDIR = '/home/pdv/libradtran/plots'
 
 class LibradtranModel(ForwardModel):
     def __init__(self,path='./libradtran/'):
@@ -65,7 +62,7 @@ class LibradtranModel(ForwardModel):
         self.lambd, self.edir, self.edn, self.eup, self.uavg, self.uu, self.eglo = np.genfromtxt('%s/%s.OUT'%(self.path,filename),unpack=True,usecols=[0,1,2,3,4,5,6])
 
 
-    def run_model(self,filename,albedo_file,aerosol,H2O,sza=30,saa=180,vza=0,vaa=0,altitude=470,latitude=-23.501,longitude=15.095,O3=-99,CH4=-99,CO2=-99,atmosphere="midlatitude_summer",rte_solver='disort'):
+    def run_model(self,filename,albedo_file,aerosol,H2O=-99,CH4=-99,O3=-99,CO2=-99,logvalues=False,verbose=False,sza=30,saa=180,vza=0,vaa=0,altitude=470,latitude=-23.501,longitude=15.095,atmosphere="midlatitude_summer",rte_solver='disort'):
         # some sensible alternative numbers for the variables:
         #H2Os = ["0","15","30"]
         #O3s = ["200","300","500"]
@@ -78,17 +75,18 @@ class LibradtranModel(ForwardModel):
         outputFilename = filename+'.OUT'
         inp = os.path.join(self.path,inputFilename)
         out = os.path.join(self.path,outputFilename)
-        verbose=False
 
         uvspec = UVspec()
         uvspec.inp["data_files_path"] = libradtranpath+'data'
 
-        if not verbose:
-            uvspec.inp["quiet"]=""
+        if verbose:
+            uvspec.inp["verbose"]=""
+        else:
+            uvspec.inp["quiet"]=""    
         uvspec.inp["atmosphere_file"] = atmosphere
         uvspec.inp["source"] = 'solar '+libradtranpath+'/data/solar_flux/kurudz_0.1nm.dat'
         uvspec.inp["albedo_file"] = albedo_file
-        #uvspec.inp["albedo"] = albedo_file
+        #uvspec.inp["albedo"] = 0.5
         uvspec.inp["pseudospherical"] = ""
 
         uvspec.inp["sza"] = str(sza)
@@ -108,24 +106,68 @@ class LibradtranModel(ForwardModel):
         uvspec.inp["zout"] = "TOA"
 
         uvspec.inp["rte_solver"] = rte_solver
-        uvspec.inp["mol_abs_param"] = 'reptran fine'
-        if O3>0:
-            uvspec.inp["mol_modify O3"] = str(O3)+" DU"
-        if H2O>0:
-            uvspec.inp["mol_modify H2O"] = str(H2O)+" MM"
-        if CH4>0:
-            uvspec.inp["mol_modify CH4"] = str(CH4)+" cm_2"
-        if CO2>0:
-            uvspec.inp["mol_modify CO2"] = str(CO2)+" cm_2"
-
-        #deltam off               # disable delta-scaling
-
-        #uvspec.inp["number_of_streams"] = "24"      # number of streams used in DISORT
 
         uvspec.inp["wavelength"] = "351.0 2480.0"  # Wavelength range [nm]
+        uvspec.inp["mol_abs_param"] = 'reptran medium'
 
-        uvspec.inp["aerosol_default"] = ""  # the simplest way to include aerosol :-)
-        uvspec.inp["aerosol_visibility"] = aerosol  
+        if H2O>-99:
+            if logvalues==True:
+                uvspec.inp["mol_modify H2O"] = str(10**H2O)+" MM"
+            else:
+                uvspec.inp["mol_modify H2O"] = str(H2O)+" MM"
+
+        if CH4>-99:
+            if logvalues==True:
+                uvspec.inp["mol_modify CH4"] = str(10**CH4*10**18)+" cm_2"
+            else:
+                uvspec.inp["mol_modify CH4"] = str(CH4*10**18)+" cm_2"
+        if O3>-99:
+            if logvalues==True:
+                uvspec.inp["mol_modify O3"] = str(10**O3)+" DU"
+            else:
+                uvspec.inp["mol_modify O3"] = str(O3)+" DU"
+        if CO2>-99:
+            if logvalues==True:
+                uvspec.inp["mol_modify CO2"] = str(10**CO2)+" cm_2"
+            else:
+                uvspec.inp["mol_modify CO2"] = str(CO2)+" cm_2"
+
+        #deltam off               # disable delta-scaling
+        #uvspec.inp["number_of_streams"] = "24"      # number of streams used in DISORT
+
+
+        #uvspec.inp["aerosol_default"] = ""  # the simplest way to include aerosol :-)
+        #uvspec.inp["aerosol_modify tau scale"] = aerosol 
+
+
+        # uvspec.inp["aerosol_vulcan"] = 1          # Aerosol type above 2km
+        # uvspec.inp["aerosol_haze"] =  1            # Aerosol type below 2km
+        # uvspec.inp["aerosol_season"] =  1          # Summer season
+        # uvspec.inp["aerosol_visibility"] =  50.0   # 
+        
+        # #uvspec.inp["aerosol_angstrom"] = "1.1 0.07" # Scale aerosol optical depth 
+        #                   # using Angstrom alpha and beta
+        #                   # coefficients
+        # #uvspec.inp["aerosol_modify ssa scale"] =  0.85    # Scale the single scattering albedo 
+        #                   # for all wavelengths
+        # #uvspec.inp["aerosol_modify gg set"] =  0.70       # Set the asymmetry factor
+        # uvspec.inp["aerosol_file tau"] =  os.path.join(self.path,"AERO_TAU.DAT")
+        # uvspec.inp["aerosol_sizedist_file"] =  os.path.join(self.path,"AERO_SIZEDIST.DAT")
+        
+        # uvspec.inp["aerosol_refrac_index "] = "1.55 0.002"
+        # #uvspec.inp["aerosol_refrac_file "] = os.path.join(self.path,"AERO_REFRAC.DAT")
+        #                   # File with aerosol refractive index
+        #uvspec.inp["disort_intcor"] = "moments"
+
+
+        uvspec.inp["profile_file aer1 1D"] = os.path.join(self.path,"testwc.DAT") + " "
+        uvspec.inp["profile_properties aer1"] = os.path.join(self.path,"aerosolmie.cdf") + " interpolate"
+        if logvalues:
+            uvspec.inp["profile_modify aer1 tau set"] = str(10**aerosol)
+        else:
+            uvspec.inp["profile_modify aer1 tau set"] = str(aerosol)
+
+
         uvspec.inp["output_user"] = "lambda edir edn eup uavg uu eglo"
 
         uvspec.inp["output_quantity"] = 'reflectivity' #'transmittance' #

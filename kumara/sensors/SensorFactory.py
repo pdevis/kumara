@@ -2,6 +2,7 @@
 
 '''___Built-In Modules___'''
 from kumara.sensors.TRUTHS import TRUTHS
+from kumara.sensors.GOSAT import GOSAT
 
 '''___Third-Party Modules___'''
 
@@ -23,5 +24,8 @@ class SensorFactory():
         if sensor=='TRUTHS':
             print("Using TRUTHS instrument \n")
             return TRUTHS(*args,**kwargs)
+        if sensor=='GOSAT':
+            print("Using GOSAT instrument \n")
+            return GOSAT(*args,**kwargs)    
 
 
