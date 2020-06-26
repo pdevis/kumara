@@ -2,7 +2,7 @@
 
 '''___Built-In Modules___'''
 from kumara.sensors.TRUTHS import TRUTHS
-from kumara.sensors.GOSAT import GOSAT
+#from kumara.sensors.GOSAT import GOSAT
 
 '''___Third-Party Modules___'''
 
