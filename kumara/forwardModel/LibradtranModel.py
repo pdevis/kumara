@@ -170,7 +170,7 @@ class LibradtranModel(ForwardModel):
 
         uvspec.inp["output_user"] = "lambda edir edn eup uavg uu eglo"
 
-        uvspec.inp["output_quantity"] = 'reflectivity' #'transmittance' #
+        #uvspec.inp["output_quantity"] = 'reflectivity' #'transmittance' #
 
         uvspec.write_input(inp)
         uvspec.run(inp,out,verbose,path=libradtranpath)
