@@ -16,8 +16,8 @@ __maintainer__ = "Pieter De Vis"
 __email__ = "pieter.de.vis@npl.co.uk"
 __status__ = "Development"
 
-class ForwardModel(ABC): 
-    def __init__(self, RTcode='libradtran',path='./libradtran/'):
+class ForwardModel(ABC):
+    def __init__(self, RTcode='libradtran',path=os.getcwd()):
         """
         Initialise Forward Model
 

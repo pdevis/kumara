@@ -21,11 +21,10 @@ __status__ = "Development"
 
 
 
-
-libradtranpath = "/opt/libRadtran-2.0.2/"
+libradtranpath =  "/mnt/c/Users/annap/DATA/thesis/libRadtran-2.0.3/"
 
 class LibradtranModel(ForwardModel):
-    def __init__(self,path='./libradtran/'):
+    def __init__(self,path=os.getcwd()):
         """
         Initialise Forward Model
 
@@ -61,8 +60,8 @@ class LibradtranModel(ForwardModel):
     def read_output(self,filename):
         self.lambd, self.edir, self.edn, self.eup, self.uavg, self.uu, self.eglo = np.genfromtxt('%s/%s.OUT'%(self.path,filename),unpack=True,usecols=[0,1,2,3,4,5,6])
 
-
-    def run_model(self,filename,albedo_file,aerosol,H2O=-99,CH4=-99,O3=-99,CO2=-99,logvalues=False,verbose=False,sza=30,saa=180,vza=0,vaa=0,altitude=470,latitude=-23.501,longitude=15.095,atmosphere="midlatitude_summer",rte_solver='disort'):
+  
+    def run_model(self,filename,albedo_file,aerosol,H2O=-99,CH4=-99,O3=-99,CO2=-99,logvalues=False, verbose=False,sza=30,saa=180,vza=0,vaa=0,altitude=470,aerosol_type=1,atmosphere="midlatitude_summer",rte_solver='disort',wavs_range="400.0 2450.0",vert_squeeze=False):
         # some sensible alternative numbers for the variables:
         #H2Os = ["0","15","30"]
         #O3s = ["200","300","500"]
@@ -84,8 +83,16 @@ class LibradtranModel(ForwardModel):
         else:
             uvspec.inp["quiet"]=""    
         uvspec.inp["atmosphere_file"] = atmosphere
-        uvspec.inp["source"] = 'solar '+libradtranpath+'/data/solar_flux/kurudz_0.1nm.dat'
-        uvspec.inp["albedo_file"] = albedo_file
+        uvspec.inp["source"] = 'solar '+libradtranpath+'data/solar_flux/kurudz_0.1nm.dat'
+
+
+        if type(albedo_file)==str:
+            uvspec.inp["albedo_file"] = albedo_file
+        else:
+            uvspec.inp["albedo_library IGBP"] = ""
+            uvspec.inp["brdf_rpv_type"] = albedo_file
+
+        #uvspec.inp["albedo_file"] = albedo_file
         #uvspec.inp["albedo"] = 0.5
         uvspec.inp["pseudospherical"] = ""
 
@@ -93,22 +100,23 @@ class LibradtranModel(ForwardModel):
         uvspec.inp["umu"] = str(np.cos(np.deg2rad(vza)))
         uvspec.inp["phi"] = str(vaa)
         uvspec.inp["phi0"] = str(180-saa)
+
         uvspec.inp["altitude"] = str(altitude/1000)
-        if latitude>0:
-            uvspec.inp["latitude"] = "N "+str(latitude)
-        else:    
-            uvspec.inp["latitude"] = "S "+str(-latitude)
-        if longitude>0:
-            uvspec.inp["longitude"] = "E "+str(longitude)
-        else:    
-            uvspec.inp["longitude"] = "W "+str(-longitude)
+        #if latitude>0:
+            #uvspec.inp["latitude"] = "N "+str(latitude)
+       # else:    
+            #uvspec.inp["latitude"] = "S "+str(-latitude)
+        #if longitude>0:
+            #uvspec.inp["longitude"] = "E "+str(longitude)
+        #else:    
+            #uvspec.inp["longitude"] = "W "+str(-longitude)
         
         uvspec.inp["zout"] = "TOA"
 
         uvspec.inp["rte_solver"] = rte_solver
 
-        uvspec.inp["wavelength"] = "351.0 2480.0"  # Wavelength range [nm]
-        uvspec.inp["mol_abs_param"] = 'reptran medium'
+        uvspec.inp["wavelength"] = wavs_range  # Wavelength range [nm]
+        uvspec.inp["mol_abs_param"] = 'reptran coarse'
 
         if H2O>-99:
             if logvalues==True:
@@ -135,13 +143,14 @@ class LibradtranModel(ForwardModel):
         #deltam off               # disable delta-scaling
         #uvspec.inp["number_of_streams"] = "24"      # number of streams used in DISORT
 
-
-        #uvspec.inp["aerosol_default"] = ""  # the simplest way to include aerosol :-)
+        uvspec.inp["aerosol_default"] = ""  # the simplest way to include aerosol :-)
         #uvspec.inp["aerosol_modify tau scale"] = aerosol 
+        uvspec.inp["aerosol_set_tau_at_wvl 440"] = aerosol
 
 
         # uvspec.inp["aerosol_vulcan"] = 1          # Aerosol type above 2km
-        # uvspec.inp["aerosol_haze"] =  1            # Aerosol type below 2km
+        uvspec.inp["aerosol_haze"] =  aerosol_type            # Aerosol type below 2km
+        #uvspec.inp["aerosol_haze"] =  1            # Aerosol type below 2km
         # uvspec.inp["aerosol_season"] =  1          # Summer season
         # uvspec.inp["aerosol_visibility"] =  50.0   # 
         
@@ -159,17 +168,18 @@ class LibradtranModel(ForwardModel):
         #                   # File with aerosol refractive index
         #uvspec.inp["disort_intcor"] = "moments"
 
+        #uvspec.inp["profile_file aer1 1D"] = os.path.join(self.path,"testwc.DAT") + " "
+        #uvspec.inp["profile_properties aer1"] = os.path.join(self.path,"aerosolmie.cdf") + " interpolate"
+        #if logvalues:
+            #uvspec.inp["profile_modify aer1 tau set"] = str(10**aerosol)
+        #else:
+            #uvspec.inp["profile_modify aer1 tau set"] = str(aerosol)
 
-        uvspec.inp["profile_file aer1 1D"] = os.path.join(self.path,"testwc.DAT") + " "
-        uvspec.inp["profile_properties aer1"] = os.path.join(self.path,"aerosolmie.cdf") + " interpolate"
-        if logvalues:
-            uvspec.inp["profile_modify aer1 tau set"] = str(10**aerosol)
-        else:
-            uvspec.inp["profile_modify aer1 tau set"] = str(aerosol)
+        if vert_squeeze:
+            uvspec.inp['aerosol_profile_modtran']=''
 
 
         uvspec.inp["output_user"] = "lambda edir edn eup uavg uu eglo"
-
         #uvspec.inp["output_quantity"] = 'reflectivity' #'transmittance' #
 
         uvspec.write_input(inp)
@@ -177,8 +187,9 @@ class LibradtranModel(ForwardModel):
         return None
 
     def get_TOA(self,filename):
-        rad = np.genfromtxt('%s/%s.OUT'%(self.path,filename),unpack=True,usecols=[5]) #in mW / (m2 nm) 
-        return rad 
+        rad = np.genfromtxt('%s/%s.OUT'%(self.path,filename),unpack=True,usecols=[5]) #in mW / (m2 nm)
+        rad[np.isnan(rad)]=0
+        return rad
 
     def get_wavs(self,filename):
         wavs = np.genfromtxt('%s/%s.OUT'%(self.path,filename),unpack=True,usecols=[0])

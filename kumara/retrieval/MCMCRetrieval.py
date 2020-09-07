@@ -32,38 +32,48 @@ inds_cache = {}
 
 # lock = threading.Lock()
 class MCMCRetrieval:
-    def __init__(self,sensor,filename,wavs,observed,reflpath,uncertainty=None,cov=None,logvalues=False,uplims=+np.inf,downlims=-np.inf,forwardmodel='libradtran',path='MCMC'):
+    def __init__(self,sensor,filename,wavs,FWHM,observed,reflpath,altitude,wavs_range,aerosol_type,vert_squeeze,sza,vza,vaa,saa,uncertainty=None,cov=None,logvalues=False,uplims=+np.inf,downlims=-np.inf,forwardmodel='libradtran',path='MCMC'):
         self.filename=filename
         self.observed=observed
         self.wavs=wavs
-        self.uncertainty=np.array([uncertainty])
+        self.FWHM=FWHM
+        self.uncertainty=uncertainty
         self.cov=cov
-        self.FM=ForwardModelFactory.create_model(forwardmodel,path)
-        self.sensor=SensorFactory.create_sensor(sensor,wavs)
+        self.FM=ForwardModelFactory.create_model(forwardmodel)
+        self.sensor=SensorFactory.create_sensor(sensor,wavs,FWHM)
         self.reflpath=reflpath
         self.uplims=np.array(uplims)
         self.downlims=np.array(downlims)
         self.logvalues=logvalues
+        self.altitude=altitude
+        #self.latitude=latitude
+        #self.longitude=longitude
+        self.sza=sza
+        self.vza=vza
+        self.vaa=vaa
+        self.saa=saa
+        self.aerosol_type=aerosol_type
+        self.wavs_range=wavs_range
+        self.vert_squeeze=vert_squeeze
 
     def run_retrieval(self,theta_0,nwalkers,steps):
         
         ndimw = len(theta_0)
         pos = [theta_0*np.random.normal(1.0,0.1,len(theta_0)) for i in range(nwalkers)]
         # print(self.lnprob(theta_0))
-        with Pool(processes=10) as pool:
-            sampler = emcee.EnsembleSampler(nwalkers, ndimw, self.lnprob, pool=pool)
-            sampler.run_mcmc(pos, steps, progress=True)
+        with Pool(processes=20) as pool:
+           sampler = emcee.EnsembleSampler(nwalkers, ndimw, self.lnprob,pool=pool)
+           sampler.run_mcmc(pos, steps, progress=True)
         # sampler = emcee.EnsembleSampler(nwalkers, ndimw, self.lnprob)
         # sampler.run_mcmc(pos, steps, progress=True)
-
-        return sampler.chain[:, :, :].reshape((-1, ndimw))
+        return sampler.get_chain()[:].reshape(-1,ndimw)
 
     def find_chisum(self,theta):
         # lock.acquire()
         filenameMCMC=self.filename+"_MCMC_%s"%time.time()
         # lock.release()
 
-        self.FM.run_model(filenameMCMC,self.reflpath,*theta,logvalues=self.logvalues)
+        self.FM.run_model(filenameMCMC,self.reflpath,*theta,logvalues=self.logvalues,altitude=self.altitude, aerosol_type=self.aerosol_type,wavs_range=self.wavs_range,vert_squeeze=self.vert_squeeze,sza=self.sza, vza=self.vza, vaa=self.vaa, saa=self.saa)
         rad_RT=self.FM.get_TOA(filenameMCMC)
         wavs_RT=self.FM.get_wavs(filenameMCMC)
         model=self.sensor.convolve(wavs_RT,rad_RT)
@@ -110,6 +120,8 @@ class MCMCRetrieval:
         if not np.isfinite(lp_prior):
             return -np.inf
         lp=self.lnlike(theta)
-        if lp<-999:
+        #if lp<-999:
+            #return -np.inf
+        if not np.isfinite(lp):
             return -np.inf    
         return lp_prior + lp

@@ -19,7 +19,7 @@ __status__ = "Development"
 
 
 class TRUTHS(Sensor):
-    def __init__(self,wavs):
+    def __init__(self,wavs,FWHM):
         """
         Initialise Sensor
 
@@ -37,10 +37,19 @@ class TRUTHS(Sensor):
         """
 
         self.wavs=wavs
+        self.FWHM=FWHM
         self.radiances = None 
         self.uncertainties = None
 
     def convolve(self,wavs,radiances):
-        func=interp1d(wavs,radiances)
-        self.radiances=func(self.wavs)
-        return self.radiances
+        #func=interp1d(wavs,radiances)
+        #self.radiances=func(self.wavs)
+        #return self.radiances
+
+        sigma=self.FWHM / np.sqrt(8 * np.log(2))
+        observed=[]
+        for i,w in enumerate(self.wavs):
+              kernel_at_pos = np.exp(-(wavs - self.wavs[i]) ** 2 / (2 * sigma[i] ** 2))
+              kernel_at_pos = kernel_at_pos / sum(kernel_at_pos)
+              observed.append(np.sum(radiances * kernel_at_pos))
+        return np.array(observed)

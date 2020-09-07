@@ -15,7 +15,7 @@ __email__ = "pieter.de.vis@npl.co.uk"
 __status__ = "Development"
 
 class Sensor(ABC): 
-    def __init__(self, wavs):
+    def __init__(self, wavs,FWHM):
         """
         Initialise Forward Model
 
@@ -33,6 +33,7 @@ class Sensor(ABC):
         """
 
         self.wavs=wavs
+        self.FWHM=FWHM
         self.radiances = None 
         self.uncertainties = None
 
@@ -40,12 +41,12 @@ class Sensor(ABC):
     def convolve(self,wavs,radiances):
         pass
 
-    def get_radiances(self):
-        return self.radiances
+    #def get_radiances(self):
+        #return self.radiances
 
-    def save_radiances(self,filename):
-        savefile=open(filename,"w")
-        savefile.write("#Wavelengths Radiances \n")
-        for i in range(len(self.wavs)):
-            savefile.write("%s   %s \n"%(self.wavs[i],self.radiances[i]))
-        savefile.close()
+    #def save_radiances(self,filename):
+        #savefile=open(filename,"w")
+        #savefile.write("#Wavelengths Radiances \n")
+        #for i in range(len(self.wavs)):
+            #savefile.write("%s   %s \n"%(self.wavs[i],self.radiances[i]))
+        #savefile.close()
