@@ -1,0 +1,243 @@
+
+'''___Third-Party Modules___'''
+import numpy as np
+import datetime
+import corner
+import matplotlib.pyplot as plt
+import scipy
+import math
+
+'''___NPL Modules___'''
+#from eopy import Product
+import kumara
+
+######################
+#!!!!!!!!!!!NEED TO SPECIFY:
+#(1) refl_directory
+#(2)sensor
+#(3) test_matrix[::2] and i*2+1 for grass 
+#or test_matrix[1::2] and i*2+2 for urban
+#(4) test_scenario!!!!!!!!!!!
+#####################
+
+#####################
+#SPECIFY refl directory
+#####################
+refl_directory='/home/ucfaapu/thesis/for_remote_work/data_files_and_scripts/'
+
+#####################
+#SPECIFY sensor
+#####################
+sensor = 'TRUTHS'
+#sensor = 'ref'
+
+syst_uncertainty={'TRUTHS':0.0015,'ref':0.015}
+
+#creating a test matrix:
+params = {
+    'AOD': [0.05, 0.2, 0.4],
+    'H2O': [5, 20, 40],
+    'surface': ['grass', 'urban']}
+
+#based on https://stackoverflow.com/questions/44887695/execute-function-on-all-possible-combinations-of-parameters
+def myfunc(**args):
+    return args
+test_matrix=[]
+
+import itertools
+keys = list(params)
+for values in itertools.product(*map(params.get, keys)):
+    test_matrix.append(myfunc(**dict(zip(keys, values))))
+
+scenarios={'Sc_0':[True,True,False,True,False,False,False], #(run for TRUTHS and ref)
+          'Sc_1':[True,False,False,True,False,False,False], #(run for TRUTHS and ref)
+          'Sc_2':[False,False,True,True,False,False,False], #(run for TRUTHS)
+          'Sc_3':[False,False,False,False,False,False,False], #(run for ref)
+           'Sc_4':[True,True,False,False,False,False,False], #(run for ref)
+          
+          'Sc_5':[True,True,False,True,True,False,False], #(run for TRUTHS and ref)
+          'Sc_6':[True,True,False,True,False,True,False], #(run for TRUTHS and ref)
+          'Sc_7':[True,True,False,True,False,False,True]} #(run for TRUTHS and ref)
+
+
+#####################
+#SPECIFY test scenario
+#####################
+test_scenario=0
+
+uncertainty_diff, limited_corr,UV_coverage, hyperspectral, surface_refl_perturb, aer_model_perturb, vertical_perturb = scenarios['Sc_%s'%test_scenario]
+
+
+def triangular_covariance(observed_wavs, reference_wavs, reference_uncertainty):
+    cov=np.zeros((len(observed_wavs),len(observed_wavs)))
+    for l in range(len(reference_wavs)-2):
+        wav_a=reference_wavs[l]
+        wav_b=reference_wavs[l+1]
+        wav_c=reference_wavs[l+2]
+        unc_a=reference_uncertainty[l]
+        unc_b=reference_uncertainty[l+1]
+        for i in range(len(observed_wavs)):     
+            wav_i=observed_wavs[i]
+            for k in range(len(observed_wavs)):
+                wav_k=observed_wavs[k]
+                if wav_i>=wav_a and wav_k>=wav_a and wav_i<=wav_b and wav_k<=wav_b: 
+                    cov[i,k]=((wav_b-wav_i)*(wav_b-wav_k)*unc_a**2+(wav_i-wav_a)*(wav_k-wav_a)*unc_b**2)/(wav_b-wav_a)**2 
+                elif wav_i>=wav_a and wav_i<=wav_b and wav_k>=wav_b and wav_k<wav_c:
+                    cov[i,k]=((wav_i-wav_a)*(wav_c-wav_k)*unc_b**2)/((wav_b-wav_a)*(wav_c-wav_b))
+                    cov[k,i]=((wav_i-wav_a)*(wav_c-wav_k)*unc_b**2)/((wav_b-wav_a)*(wav_c-wav_b))
+    
+    wav_a=reference_wavs[len(reference_wavs)-2]
+    wav_b=reference_wavs[len(reference_wavs)-1]
+    unc_a=reference_uncertainty[len(reference_wavs)-2]
+    unc_b=reference_uncertainty[len(reference_wavs)-1]
+    for i in range(len(observed_wavs)):     
+        wav_i=observed_wavs[i]
+        for k in range(len(observed_wavs)):
+            wav_k=observed_wavs[k]
+            if wav_i>=wav_a and wav_k>=wav_a and wav_i<=wav_b and wav_k<=wav_b: 
+                cov[i,k]=((wav_b-wav_i)*(wav_b-wav_k)*unc_a**2+(wav_i-wav_a)*(wav_k-wav_a)*unc_b**2)/(wav_b-wav_a)**2     
+    return cov
+
+def correlation_from_covariance(covariance):
+    v = np.sqrt(np.diag(covariance))
+    outer_v = np.outer(v, v)
+    correlation = covariance / outer_v
+    correlation[covariance == 0] = 0
+    return correlation
+
+#####################
+#SPECIFY test_matrix[::2] and 2*i+1 for grass or test_matrix[1::2] and 2*i+2 for urban surface
+#####################
+
+for i,test in enumerate(test_matrix[::2]):
+    filename='new_s%s_test%s_%s'%(test_scenario,2*i+1,sensor)
+    
+    aerosol=test['AOD']
+    H2O=test['H2O']
+    
+    
+    if UV_coverage:
+        wavs_range='320 2450'
+    else:
+        wavs_range='400 2450'
+        
+        
+    reflpath=refl_directory+'%s_reflectance.txt'%test['surface']
+    if surface_refl_perturb:
+        if test['surface']=='grass':
+            reflpath_retrieval=10
+        elif test['surface']=='urban':
+            reflpath_retrieval=13
+        else:
+            print('unknown surface type')
+    else:
+        reflpath_retrieval=reflpath
+        
+    aerosol_model=1 #rural
+    if aer_model_perturb:
+        aerosol_model_retrieval=5 #urban type
+    else:
+        aerosol_model_retrieval=aerosol_model
+        
+        
+    
+    metadata={}
+    metadata['height']=70000 #in m  (this is too low but consistent with GRASP)
+    metadata['altitude']=500   # in m
+    metadata['sza']=30  #solar zenith angle (as measured from zenith)
+    metadata['saa']=180  #solar azimuth angle (as measured from North)
+    metadata['vza']=0  #viewing zenith angle (as measured from zenith)
+    metadata['vaa']=0  #viewing azimuth angle (as measured from North)
+    metadata['raa']=metadata['saa']-metadata['vaa']
+    metadata["aerosol_haze"]=aerosol_model
+    metadata["wavelength"]=wavs_range#by default aerosol type is urban
+    
+    
+    fm=kumara.ForwardModelFactory.create_model('libradtran')
+    fm.run_model(filename,reflpath,aerosol,H2O,altitude=metadata['altitude'],
+                 sza=metadata['sza'],vza=metadata['vza'],vaa=metadata['vaa'],saa=metadata['saa'],
+                 aerosol_type=metadata["aerosol_haze"],wavs_range=metadata["wavelength"])
+    
+    fm.read_output(filename)
+    rad_RT=fm.get_TOA(filename)
+    wavs_RT=fm.get_wavs(filename)
+    
+    wavs_truths_=np.genfromtxt("TRUTHS_spectral_design.txt",usecols=[0])[:-3]
+    FWHM_truths_=np.genfromtxt("TRUTHS_spectral_design.txt",usecols=[-1])[:-3]
+    
+    if hyperspectral:
+        wavs_truths=wavs_truths_[4:]
+        FWHM_truths=FWHM_truths_[4:]
+    
+        if UV_coverage:
+            wavs_truths=np.append(np.arange(320,360,10),wavs_truths_)
+            FWHM_truths=np.append(np.ones(4)*FWHM_truths_[0],FWHM_truths_)
+    else:
+        wavs_truths=[440,490,560,670,760,860,910,1020]
+        ind=np.where(np.in1d(wavs_truths_, wavs_truths))
+        FWHM_truths=FWHM_truths_[ind]
+ 
+    truths=kumara.SensorFactory.create_sensor('TRUTHS',wavs_truths,FWHM_truths)
+    observed=truths.convolve(wavs_RT,rad_RT)
+    
+    if uncertainty_diff:
+        uncertainties_syst=syst_uncertainty[sensor]*observed
+    else:
+        uncertainties_syst=syst_uncertainty['TRUTHS']*observed
+        
+    uncertainties_rand=0.003*observed
+ 
+    uncertainties_random_abs_intp=[0.4,0.4, 0.4, 0.4, 0.28, 0.21, 0.19, 0.17, 0.14, 0.1, 0.085, 0.07, 0.05, 0.065, 0.05, 0.05, 0.035, 0.042]
+    uncertainties_random_abs_intp_wav=[ 300, 400,  430,  500, 600 , 830 , 890 , 940 ,1130, 1280, 1330, 1480, 1520, 1760, 1950, 2050, 2450, 2500]
+    func_interpolate = scipy.interpolate.interp1d(uncertainties_random_abs_intp_wav,uncertainties_random_abs_intp)
+    uncertainties_abs = np.array([func_interpolate(wavs_truths)])
+
+    #observed=observed+np.random.normal(size=len(observed))*uncertainties_abs+np.random.normal(size=len(observed))*uncertainties_rand+np.random.normal(size=len(observed))*uncertainties_syst
+    #observed=observed[0,:]
+
+    #if uncertainty_diff:
+        #uncertainties_syst=syst_uncertainty[sensor]*observed
+    #else:
+        #uncertainties_syst=syst_uncertainty['TRUTHS']*observed
+        
+    #uncertainties_rand=0.003*observed
+
+    cov_random = uncertainties_rand * np.eye(len(wavs_truths)) * uncertainties_rand.T
+    cov_random_abs = uncertainties_abs * np.eye(len(wavs_truths)) * uncertainties_abs.T
+    
+    if test_scenario in [5,6,7] and sensor=='TRUTHS':
+        limited_corr=False
+        #print('limited correlation is changed to',limited_corr)
+        
+    if limited_corr:
+        if hyperspectral==False:
+            wavs_ref=[min(wavs_truths),500,600,700,800,900,max(wavs_truths)]
+            ids_ref=[np.argmin(np.abs(np.array(wavs_truths)-wav_ref)) for wav_ref in wavs_ref]
+        else:
+            wavs_ref=[min(wavs_truths),500,600,700,800,900,1100,1300,1600,2100,max(wavs_truths)]
+            ids_ref=[np.argmin(np.abs(wavs_truths-wav_ref)) for wav_ref in wavs_ref]
+        unc_ref=syst_uncertainty[sensor]*observed[ids_ref]
+        cov_triangle=triangular_covariance(wavs_truths,wavs_ref,unc_ref)
+        cov_total=cov_random+cov_random_abs+cov_triangle
+        #plt.imshow(correlation_from_covariance(cov_triangle))
+        #plt.colorbar()
+        #plt.show()
+    else:
+        cov_syst = uncertainties_syst * np.ones((len(wavs_truths),len(wavs_truths))) * uncertainties_syst.T
+        cov_total = cov_random+cov_random_abs+cov_syst
+    
+    retr=kumara.RetrievalFactory.create_retrieval('MCMC','TRUTHS',filename,wavs_truths,FWHM_truths,
+                                                  observed,reflpath_retrieval,
+                                                  altitude=metadata['altitude'],
+                                                  sza=metadata['sza'],
+                                                  vza=metadata['vza'],
+                                                  vaa=metadata['vaa'],
+                                                  saa=metadata['saa'],
+                                                  wavs_range=metadata["wavelength"],
+                                                  aerosol_type=aerosol_model_retrieval,
+                                                  vert_squeeze=vertical_perturb,
+                                                  cov=cov_total,
+                                                 downlims=[0,0])
+    samples=retr.run_retrieval([aerosol,H2O],70,100)
+    
+    np.save(filename+".npy",samples)
